@@ -203,6 +203,7 @@ final class CRMM_Trim_Number_Registry {
 	private static function save_post_meta( int $post_id, string $part_number, string $category, string $subcategory, int $sequence ): void {
 		update_post_meta( $post_id, self::PART_NUMBER_META, $part_number );
 		update_post_meta( $post_id, '_' . self::PART_NUMBER_META, 'field_crmm_part_number' );
+		update_post_meta( $post_id, CRMM_Trim_Block_Editor::PART_NUMBER_META, $part_number );
 		update_post_meta( $post_id, self::CATEGORY_CODE_META, $category );
 		update_post_meta( $post_id, self::SUBCATEGORY_CODE_META, $subcategory );
 		update_post_meta( $post_id, self::SEQUENCE_META, $sequence );

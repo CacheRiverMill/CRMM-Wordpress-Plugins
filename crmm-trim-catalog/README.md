@@ -10,6 +10,7 @@ WordPress plugin for the Cache River Mill & MetalWorks trim profile registry and
 - Maintains an immutable, concurrency-safe part-number ledger.
 - Imports the legacy `trim_profiles` CSV without publishing records automatically.
 - Keeps shop records, verification fields, and internal notes out of public ACF REST data.
+- Registers native WordPress metadata bindings and reusable profile patterns without requiring ACF Pro.
 
 Onshape remains the source of truth for profile geometry. WordPress owns part-number assignment and the curated marketing/specification catalog.
 
@@ -17,7 +18,7 @@ Onshape remains the source of truth for profile geometry. WordPress owns part-nu
 
 - Current supported WordPress release
 - PHP 8.1 or newer
-- Advanced Custom Fields, free or Pro (current supported release)
+- Advanced Custom Fields Free or Pro (current supported release)
 - MySQL or MariaDB with `GET_LOCK()` support
 
 ## Part-number rules
@@ -45,6 +46,32 @@ Example: `1-CM-1000`.
 4. Open **Trim Profiles → Import Legacy CSV** for a legacy data import.
 
 Run the first import without downloading images. The importer retains each legacy image URL internally so media migration can be handled separately or retried later.
+
+## Block editor and profile patterns
+
+The plugin uses WordPress's native `core/post-meta` block-binding source. ACF Free remains the editing interface; ACF Pro and the ACF datastore are not required.
+
+Public fields are registered with readable labels in the block editor. Internal notes, verification data, Onshape links, knife/template records, and other shop fields are not registered as binding sources.
+
+The **CRMM Trim Catalog** pattern category includes:
+
+- Trim Profile Hero
+- Trim Profile Specifications
+- Trim Profile Visuals
+- Trim Profile Downloads
+- Complete Trim Profile Layout
+
+For a block theme, open **Appearance → Editor → Templates**, create or edit the **Single Trim Profile** template, and insert **Complete Trim Profile Layout**. Add the theme's header and footer template parts outside the pattern. The smaller component patterns can be inserted and rearranged independently.
+
+Bound core blocks remain normal Heading, Paragraph, Image, Button, and Post Terms blocks. Their typography, spacing, colors, alignment, and surrounding layout can be edited normally. Use the block's **Attributes** panel to inspect or replace a metadata binding.
+
+The plugin creates public display mirrors for data that cannot be bound directly:
+
+- The protected immutable part number is mirrored to `crmm_part_number`.
+- Decimal dimensions are mirrored as nearest-sixteenth display values such as `2 5/8″`.
+- ACF attachment IDs are mirrored to public image and download URLs.
+
+Existing profiles are backfilled automatically when version 0.2.0 first loads in WordPress admin.
 
 ## Migration behavior
 

@@ -33,7 +33,7 @@ final class CRMM_Trim_Post_Type {
 				'rewrite'             => array( 'slug' => 'trim-profiles' ),
 				'menu_icon'           => 'dashicons-screenoptions',
 				'menu_position'       => 21,
-				'supports'            => array( 'title', 'editor', 'thumbnail', 'excerpt', 'revisions' ),
+				'supports'            => array( 'title', 'editor', 'thumbnail', 'excerpt', 'revisions', 'custom-fields' ),
 				'exclude_from_search' => false,
 				'publicly_queryable'  => true,
 				'show_ui'             => true,
