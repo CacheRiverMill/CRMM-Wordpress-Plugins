@@ -56,7 +56,7 @@ final class CRMM_Trim_Plugin {
 		return $mimes;
 	}
 
-	public static function check_dxf_filetype( array $data, string $file, string $filename, array $mimes, string|false $real_mime ): array {
+	public static function check_dxf_filetype( array $data, string $file, string $filename, ?array $mimes, string|false $real_mime ): array {
 		if ( current_user_can( 'manage_options' ) && 'dxf' === strtolower( pathinfo( $filename, PATHINFO_EXTENSION ) ) ) {
 			$data['ext']             = 'dxf';
 			$data['type']            = 'application/dxf';
