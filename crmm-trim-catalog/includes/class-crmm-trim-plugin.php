@@ -23,6 +23,7 @@ final class CRMM_Trim_Plugin {
 
 		CRMM_Trim_Fields::boot();
 		CRMM_Trim_Admin::boot();
+		CRMM_Trim_Block_Bindings::boot();
 	}
 
 	public static function acf_notice(): void {
