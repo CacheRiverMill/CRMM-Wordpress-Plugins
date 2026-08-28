@@ -4,6 +4,7 @@
  * Description: Manages CRMM trim profiles, part-number assignment, catalog fields, and legacy imports.
  * Version: 0.2.0
  * Author: Cache River Mill & MetalWorks
+ * Requires at least: 6.7
  * Requires PHP: 8.1
  * Text Domain: crmm-trim-catalog
  */
@@ -18,6 +19,7 @@ require_once CRMM_TRIM_CATALOG_DIR . 'includes/class-crmm-trim-post-type.php';
 require_once CRMM_TRIM_CATALOG_DIR . 'includes/class-crmm-trim-taxonomies.php';
 require_once CRMM_TRIM_CATALOG_DIR . 'includes/class-crmm-trim-number-registry.php';
 require_once CRMM_TRIM_CATALOG_DIR . 'includes/class-crmm-trim-fields.php';
+require_once CRMM_TRIM_CATALOG_DIR . 'includes/class-crmm-trim-block-editor.php';
 require_once CRMM_TRIM_CATALOG_DIR . 'includes/class-crmm-trim-importer.php';
 require_once CRMM_TRIM_CATALOG_DIR . 'includes/class-crmm-trim-admin.php';
 require_once CRMM_TRIM_CATALOG_DIR . 'includes/class-crmm-trim-block-bindings.php';

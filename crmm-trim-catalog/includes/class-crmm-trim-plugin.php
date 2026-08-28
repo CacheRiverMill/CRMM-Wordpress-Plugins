@@ -16,14 +16,29 @@ final class CRMM_Trim_Plugin {
 	public function boot(): void {
 		add_action( 'init', array( 'CRMM_Trim_Post_Type', 'register' ) );
 		add_action( 'init', array( 'CRMM_Trim_Taxonomies', 'register' ) );
+		add_action( 'init', array( 'CRMM_Trim_Block_Editor', 'register_meta' ), 15 );
 		add_action( 'init', array( 'CRMM_Trim_Taxonomies', 'seed_terms' ), 20 );
+		add_action( 'init', array( 'CRMM_Trim_Block_Editor', 'register_patterns' ), 20 );
 		add_action( 'admin_notices', array( __CLASS__, 'acf_notice' ) );
+		add_action( 'admin_init', array( __CLASS__, 'maybe_upgrade' ) );
 		add_filter( 'upload_mimes', array( __CLASS__, 'allow_dxf_uploads' ) );
 		add_filter( 'wp_check_filetype_and_ext', array( __CLASS__, 'check_dxf_filetype' ), 10, 5 );
+		add_action( 'added_post_meta', array( 'CRMM_Trim_Block_Editor', 'sync_changed_meta' ), 10, 4 );
+		add_action( 'updated_post_meta', array( 'CRMM_Trim_Block_Editor', 'sync_changed_meta' ), 10, 4 );
 
 		CRMM_Trim_Fields::boot();
 		CRMM_Trim_Admin::boot();
 		CRMM_Trim_Block_Bindings::boot();
+	}
+
+	public static function maybe_upgrade(): void {
+		if ( CRMM_TRIM_CATALOG_VERSION === get_option( 'crmm_trim_catalog_version' ) ) {
+			return;
+		}
+
+		CRMM_Trim_Number_Registry::install();
+		CRMM_Trim_Block_Editor::backfill_public_meta();
+		update_option( 'crmm_trim_catalog_version', CRMM_TRIM_CATALOG_VERSION, false );
 	}
 
 	public static function acf_notice(): void {
@@ -42,7 +57,7 @@ final class CRMM_Trim_Plugin {
 		return $mimes;
 	}
 
-	public static function check_dxf_filetype( array $data, string $file, string $filename, array $mimes, string|false $real_mime ): array {
+	public static function check_dxf_filetype( array $data, string $file, string $filename, ?array $mimes, string|false $real_mime ): array {
 		if ( current_user_can( 'manage_options' ) && 'dxf' === strtolower( pathinfo( $filename, PATHINFO_EXTENSION ) ) ) {
 			$data['ext']             = 'dxf';
 			$data['type']            = 'application/dxf';
@@ -57,6 +72,8 @@ final class CRMM_Trim_Plugin {
 		CRMM_Trim_Taxonomies::register();
 		CRMM_Trim_Taxonomies::seed_terms();
 		CRMM_Trim_Number_Registry::install();
+		CRMM_Trim_Block_Editor::backfill_public_meta();
+		update_option( 'crmm_trim_catalog_version', CRMM_TRIM_CATALOG_VERSION, false );
 
 		flush_rewrite_rules();
 	}
