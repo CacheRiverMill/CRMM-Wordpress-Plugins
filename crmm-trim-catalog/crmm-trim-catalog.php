@@ -2,7 +2,7 @@
 /**
  * Plugin Name: CRMM Trim Catalog
  * Description: Manages CRMM trim profiles, part-number assignment, catalog fields, and legacy imports.
- * Version: 0.3.0
+ * Version: 0.3.1
  * Author: Cache River Mill & MetalWorks
  * Requires PHP: 8.1
  * Text Domain: crmm-trim-catalog
@@ -10,7 +10,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'CRMM_TRIM_CATALOG_VERSION', '0.3.0' );
+define( 'CRMM_TRIM_CATALOG_VERSION', '0.3.1' );
 define( 'CRMM_TRIM_CATALOG_FILE', __FILE__ );
 define( 'CRMM_TRIM_CATALOG_DIR', plugin_dir_path( __FILE__ ) );
 

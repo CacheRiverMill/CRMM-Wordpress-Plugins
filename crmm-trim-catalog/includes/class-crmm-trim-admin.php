@@ -12,6 +12,7 @@ final class CRMM_Trim_Admin {
 		add_action( 'admin_post_crmm_trim_import', array( 'CRMM_Trim_Importer', 'handle_upload' ) );
 		add_action( 'wp_ajax_crmm_preview_trim_number', array( __CLASS__, 'preview_number' ) );
 		add_action( 'admin_enqueue_scripts', array( __CLASS__, 'enqueue_editor_assets' ) );
+		add_action( 'acf/save_post', array( __CLASS__, 'assign_number_on_save' ), 30 );
 	}
 
 	public static function add_number_meta_box(): void {
@@ -34,19 +35,43 @@ final class CRMM_Trim_Admin {
 			return;
 		}
 
-		if ( 'auto-draft' === $post->post_status ) {
-			echo '<p>' . esc_html__( 'Save the profile and select its category and profile type before assigning a number.', 'crmm-trim-catalog' ) . '</p>';
-			return;
-		}
-
 		if ( ! current_user_can( CRMM_Trim_Capabilities::ASSIGN_NUMBERS ) ) {
 			echo '<p>' . esc_html__( 'A catalog manager with number-assignment permission must assign the part number.', 'crmm-trim-catalog' ) . '</p>';
 			return;
 		}
 
-		echo '<p>' . esc_html__( 'Assignment uses the next number after the highest existing number for this category and profile type. Sequence gaps are never filled.', 'crmm-trim-catalog' ) . '</p>';
+		echo '<p>' . esc_html__( 'Select a category and profile type to preview the expected number. The permanent number is reserved automatically when the profile is saved.', 'crmm-trim-catalog' ) . '</p>';
 		echo '<p id="crmm-expected-number" class="description">' . esc_html__( 'Select a category and profile type to preview the expected next number.', 'crmm-trim-catalog' ) . '</p>';
-		echo '<button type="button" class="button button-primary" id="crmm-assign-number" data-post-id="' . esc_attr( (string) $post->ID ) . '" data-nonce="' . esc_attr( wp_create_nonce( 'crmm_assign_trim_number_' . $post->ID ) ) . '" data-action-url="' . esc_url( admin_url( 'admin-post.php' ) ) . '">' . esc_html__( 'Assign Next Part Number', 'crmm-trim-catalog' ) . '</button>';
+		if ( 'auto-draft' !== $post->post_status ) {
+			echo '<button type="button" class="button button-secondary" id="crmm-assign-number" data-post-id="' . esc_attr( (string) $post->ID ) . '" data-nonce="' . esc_attr( wp_create_nonce( 'crmm_assign_trim_number_' . $post->ID ) ) . '" data-action-url="' . esc_url( admin_url( 'admin-post.php' ) ) . '">' . esc_html__( 'Assign Without Saving Again', 'crmm-trim-catalog' ) . '</button>';
+		}
+	}
+
+	public static function assign_number_on_save( int|string $post_id ): void {
+		$post_id = (int) $post_id;
+		if ( ! $post_id || CRMM_Trim_Post_Type::POST_TYPE !== get_post_type( $post_id ) || wp_is_post_revision( $post_id ) || wp_is_post_autosave( $post_id ) ) {
+			return;
+		}
+		if ( CRMM_Trim_Number_Registry::for_post( $post_id ) || ! current_user_can( CRMM_Trim_Capabilities::ASSIGN_NUMBERS ) || ! current_user_can( 'edit_post', $post_id ) ) {
+			return;
+		}
+
+		$categories = wp_get_post_terms( $post_id, CRMM_Trim_Taxonomies::CATEGORY_TAXONOMY );
+		$subtypes   = wp_get_post_terms( $post_id, CRMM_Trim_Taxonomies::SUBTYPE_TAXONOMY );
+		if ( is_wp_error( $categories ) || is_wp_error( $subtypes ) || 1 !== count( $categories ) || 1 !== count( $subtypes ) ) {
+			return;
+		}
+
+		$category_code = (string) get_term_meta( $categories[0]->term_id, 'crmm_category_code', true );
+		$subtype_code  = (string) get_term_meta( $subtypes[0]->term_id, 'crmm_subtype_code', true );
+		if ( ! CRMM_Trim_Taxonomies::subtype_matches_category( $subtypes[0]->term_id, $category_code ) ) {
+			return;
+		}
+
+		$result = CRMM_Trim_Number_Registry::allocate( $post_id, $category_code, $subtype_code, get_current_user_id() );
+		if ( is_wp_error( $result ) ) {
+			set_transient( 'crmm_trim_auto_assignment_failed_' . get_current_user_id(), $result->get_error_message(), MINUTE_IN_SECONDS );
+		}
 	}
 
 	public static function assign_number(): void {
@@ -81,6 +106,11 @@ final class CRMM_Trim_Admin {
 	}
 
 	public static function notices(): void {
+		$automatic_error = get_transient( 'crmm_trim_auto_assignment_failed_' . get_current_user_id() );
+		if ( $automatic_error ) {
+			delete_transient( 'crmm_trim_auto_assignment_failed_' . get_current_user_id() );
+			printf( '<div class="notice notice-error is-dismissible"><p>%s</p></div>', esc_html( sprintf( __( 'The profile was saved, but its part number could not be assigned: %s', 'crmm-trim-catalog' ), $automatic_error ) ) );
+		}
 		if ( empty( $_GET['crmm_trim_notice'] ) ) {
 			return;
 		}

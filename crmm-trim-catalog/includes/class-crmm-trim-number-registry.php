@@ -111,6 +111,7 @@ final class CRMM_Trim_Number_Registry {
 		}
 
 		$wpdb->get_var( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $lock_name ) );
+		CRMM_Trim_Integrity::sync_title( $post_id, $part_number );
 		CRMM_Trim_Audit::record(
 			$post_id,
 			'part_number_assigned',
@@ -153,6 +154,7 @@ final class CRMM_Trim_Number_Registry {
 			}
 
 			self::save_post_meta( $post_id, $part_number, $parsed['category'], $parsed['subcategory'], $parsed['sequence'] );
+			CRMM_Trim_Integrity::sync_title( $post_id, $part_number );
 			return true;
 		}
 
@@ -177,6 +179,7 @@ final class CRMM_Trim_Number_Registry {
 		}
 
 		self::save_post_meta( $post_id, $part_number, $parsed['category'], $parsed['subcategory'], $parsed['sequence'] );
+		CRMM_Trim_Integrity::sync_title( $post_id, $part_number );
 		return true;
 	}
 

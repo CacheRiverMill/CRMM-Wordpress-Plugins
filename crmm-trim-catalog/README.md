@@ -73,7 +73,7 @@ The following fields are restricted to WordPress administrators and excluded fro
 
 ## Profile Manager
 
-The native **Trim Profiles** list includes profile/render thumbnails, permanent part number, classification, dimensions, shop status, approval, verification, and readiness. It also provides filters and saved queues for unnumbered profiles, missing images, verification work, discrepancies, and profiles that appear ready to publish.
+The native **Trim Profiles** list includes profile/render thumbnails, permanent part number, classification, dimensions, shop status, approval, verification, and readiness. It also provides filters and saved queues for unnumbered profiles, missing images, verification work, discrepancies, and profiles that appear ready to publish. Legacy style terms remain stored for compatibility but are no longer exposed as an editing control.
 
 Admin search includes titles, current and legacy part numbers, category, profile type, and style. Part-number sorting uses the stored numeric sequence instead of lexical string order.
 
@@ -87,7 +87,9 @@ If WordPress mail delivery fails, the permanent number remains assigned and the 
 
 ## Classification integrity
 
-Category and profile type are locked after permanent number assignment. Server-side term enforcement restores the registry-backed classification if a REST or programmatic update attempts to change it. The editor may display an unreserved expected-number preview, but only the locked registry transaction reserves a number.
+Category and profile type are locked after permanent number assignment. Server-side term enforcement restores the registry-backed classification if a REST or programmatic update attempts to change it. Selecting both fields displays an unreserved expected-number preview in the editor; the first valid save reserves the authoritative number through the locked registry transaction.
+
+The expected number is displayed as the post title while editing. After allocation, the committed permanent number becomes the authoritative post title, and later title changes are automatically restored to that number.
 
 ## Current limitations
 

@@ -4,6 +4,17 @@
 	if ( ! config ) {
 		return;
 	}
+	let lastPreview = '';
+
+	function updatePostTitle( value ) {
+		if ( window.wp && wp.data && wp.data.dispatch( 'core/editor' ) ) {
+			wp.data.dispatch( 'core/editor' ).editPost( { title: value } );
+		}
+		const classicTitle = $( '#title' );
+		if ( classicTitle.length ) {
+			classicTitle.val( value ).trigger( 'input' ).trigger( 'change' );
+		}
+	}
 
 	function fields() {
 		return {
@@ -34,10 +45,18 @@
 		const categoryCode = config.categoryCodes[ String( controls.category.val() || '' ) ] || '';
 		const subtype = config.subtypes[ String( controls.subtype.val() || '' ) ];
 		const target = $( '#crmm-expected-number' );
+		const numberField = $( '[data-key="field_crmm_part_number"] input' );
 
-		if ( ! target.length || ! categoryCode || ! subtype || subtype.category !== categoryCode ) {
+		if ( ! categoryCode || ! subtype || subtype.category !== categoryCode ) {
+			target.text( 'Select a category and profile type to preview the expected next number.' );
+			numberField.val( '' );
+			if ( lastPreview ) {
+				updatePostTitle( '' );
+				lastPreview = '';
+			}
 			return;
 		}
+		target.text( 'Calculating expected number…' );
 
 		$.post( config.ajaxUrl, {
 			action: 'crmm_preview_trim_number',
@@ -48,7 +67,14 @@
 		} ).done( function ( response ) {
 			if ( response && response.success ) {
 				target.text( config.previewLabel + ' ' + response.data.part_number );
+				numberField.val( response.data.part_number ).trigger( 'change' );
+				lastPreview = response.data.part_number;
+				updatePostTitle( lastPreview );
+			} else if ( response && response.data && response.data.message ) {
+				target.text( response.data.message );
 			}
+		} ).fail( function () {
+			target.text( 'The expected number could not be loaded. Save the profile to retry assignment.' );
 		} );
 	}
 

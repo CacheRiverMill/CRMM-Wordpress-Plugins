@@ -291,13 +291,7 @@ final class CRMM_Trim_Importer {
 
 		$style = trim( $style );
 		if ( '' !== $style ) {
-			$result = wp_set_object_terms( $post_id, array( $style ), CRMM_Trim_Taxonomies::STYLE_TAXONOMY, false );
-			if ( ! is_wp_error( $result ) ) {
-				$style_term = get_term_by( 'term_taxonomy_id', (int) $result[0], CRMM_Trim_Taxonomies::STYLE_TAXONOMY );
-				if ( $style_term instanceof WP_Term ) {
-					self::update_field( 'field_crmm_trim_style', 'trim_style', $style_term->term_id, $post_id );
-				}
-			}
+			wp_set_object_terms( $post_id, array( $style ), CRMM_Trim_Taxonomies::STYLE_TAXONOMY, false );
 		}
 
 		if ( $category ) {

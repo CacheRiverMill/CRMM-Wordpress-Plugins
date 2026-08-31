@@ -27,6 +27,7 @@ final class CRMM_Trim_Fields {
 		add_filter( 'acf/prepare_field/key=field_crmm_trim_subtype', array( __CLASS__, 'lock_numbered_classification' ) );
 		add_filter( 'acf/update_value/key=field_crmm_trim_category', array( __CLASS__, 'protect_numbered_classification' ), 20, 3 );
 		add_filter( 'acf/update_value/key=field_crmm_trim_subtype', array( __CLASS__, 'protect_numbered_classification' ), 20, 3 );
+		add_filter( 'acf/update_value/key=field_crmm_part_number', array( __CLASS__, 'protect_registry_number' ), 20, 3 );
 		add_filter( 'acf/prepare_field/key=field_crmm_marketing_catalog', array( __CLASS__, 'protect_approval_field' ) );
 		add_filter( 'acf/update_value/key=field_crmm_marketing_catalog', array( __CLASS__, 'protect_approval_value' ), 20, 3 );
 		add_filter( 'acf/prepare_field/key=field_crmm_verification_status', array( __CLASS__, 'protect_verification_field' ), 20 );
@@ -51,7 +52,6 @@ final class CRMM_Trim_Fields {
 				'fields'        => array(
 					self::taxonomy_field( 'field_crmm_trim_category', 'trim_category', __( 'Main Category', 'crmm-trim-catalog' ), CRMM_Trim_Taxonomies::CATEGORY_TAXONOMY, true ),
 					self::taxonomy_field( 'field_crmm_trim_subtype', 'trim_subtype', __( 'Profile Type', 'crmm-trim-catalog' ), CRMM_Trim_Taxonomies::SUBTYPE_TAXONOMY, true ),
-					self::taxonomy_field( 'field_crmm_trim_style', 'trim_style', __( 'Style', 'crmm-trim-catalog' ), CRMM_Trim_Taxonomies::STYLE_TAXONOMY, false ),
 					array(
 						'key'           => 'field_crmm_marketing_catalog',
 						'label'         => __( 'Approved for Marketing Catalog', 'crmm-trim-catalog' ),
@@ -251,6 +251,10 @@ final class CRMM_Trim_Fields {
 		}
 		$existing = get_post_meta( $post_id, (string) $field['name'], true );
 		return '' !== (string) $existing ? $existing : $value;
+	}
+
+	public static function protect_registry_number( mixed $value, int|string $post_id, array $field ): string {
+		return CRMM_Trim_Number_Registry::for_post( (int) $post_id );
 	}
 
 	public static function protect_approval_field( array $field ): array|false {
