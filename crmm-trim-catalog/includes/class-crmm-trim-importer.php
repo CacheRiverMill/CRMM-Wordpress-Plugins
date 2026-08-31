@@ -20,14 +20,14 @@ final class CRMM_Trim_Importer {
 			'edit.php?post_type=' . CRMM_Trim_Post_Type::POST_TYPE,
 			__( 'Import Legacy Profiles', 'crmm-trim-catalog' ),
 			__( 'Import Legacy CSV', 'crmm-trim-catalog' ),
-			'manage_options',
+			CRMM_Trim_Capabilities::IMPORT_PROFILES,
 			'crmm-trim-import',
 			array( __CLASS__, 'render_page' )
 		);
 	}
 
 	public static function render_page(): void {
-		if ( ! current_user_can( 'manage_options' ) ) {
+		if ( ! current_user_can( CRMM_Trim_Capabilities::IMPORT_PROFILES ) ) {
 			return;
 		}
 
@@ -89,7 +89,7 @@ final class CRMM_Trim_Importer {
 	}
 
 	public static function handle_upload(): void {
-		if ( ! current_user_can( 'manage_options' ) ) {
+		if ( ! current_user_can( CRMM_Trim_Capabilities::IMPORT_PROFILES ) ) {
 			wp_die(
 				esc_html__( 'You are not allowed to import trim profiles.', 'crmm-trim-catalog' ),
 				esc_html__( 'Forbidden', 'crmm-trim-catalog' ),

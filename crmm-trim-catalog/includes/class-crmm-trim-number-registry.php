@@ -111,7 +111,27 @@ final class CRMM_Trim_Number_Registry {
 		}
 
 		$wpdb->get_var( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $lock_name ) );
+		CRMM_Trim_Audit::record(
+			$post_id,
+			'part_number_assigned',
+			array( 'part_number' => $part_number, 'category_code' => $category_code, 'subtype_code' => $subcategory_code )
+		);
+		do_action( 'crmm_trim_number_assigned', $post_id, $part_number, $category_code, $subcategory_code, $user_id );
 		return $part_number;
+	}
+
+	public static function preview_next( string $category_code, string $subcategory_code ): string {
+		global $wpdb;
+		$category_code    = self::normalize_code( $category_code );
+		$subcategory_code = self::normalize_code( $subcategory_code );
+		$maximum = (int) $wpdb->get_var(
+			$wpdb->prepare(
+				'SELECT MAX(sequence_number) FROM ' . self::table_name() . ' WHERE category_code = %s AND subcategory_code = %s',
+				$category_code,
+				$subcategory_code
+			)
+		);
+		return self::format( $category_code, $subcategory_code, max( 1000, $maximum + 1 ) );
 	}
 
 	public static function reserve_imported( int $post_id, string $part_number, int $user_id = 0 ): true|WP_Error {

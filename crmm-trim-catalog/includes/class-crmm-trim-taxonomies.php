@@ -54,6 +54,7 @@ final class CRMM_Trim_Taxonomies {
 				'show_admin_column' => true,
 				'hierarchical'      => false,
 				'meta_box_cb'       => false,
+				'capabilities'      => CRMM_Trim_Capabilities::taxonomy_capabilities(),
 				'rewrite'           => array( 'slug' => 'trim-category' ),
 			),
 		);
@@ -68,6 +69,7 @@ final class CRMM_Trim_Taxonomies {
 				'show_admin_column' => true,
 				'hierarchical'      => false,
 				'meta_box_cb'       => false,
+				'capabilities'      => CRMM_Trim_Capabilities::taxonomy_capabilities(),
 				'rewrite'           => array( 'slug' => 'trim-type' ),
 			),
 		);
@@ -82,6 +84,7 @@ final class CRMM_Trim_Taxonomies {
 				'show_admin_column' => true,
 				'hierarchical'      => false,
 				'meta_box_cb'       => false,
+				'capabilities'      => CRMM_Trim_Capabilities::taxonomy_capabilities(),
 				'rewrite'           => array( 'slug' => 'trim-style' ),
 			),
 		);

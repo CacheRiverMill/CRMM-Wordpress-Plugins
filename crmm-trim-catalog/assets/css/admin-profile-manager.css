@@ -1,0 +1,52 @@
+.post-type-crmm_trim_profile .wp-list-table .column-crmm_profile_image,
+.post-type-crmm_trim_profile .wp-list-table .column-crmm_render {
+	width: 64px;
+}
+
+.post-type-crmm_trim_profile .wp-list-table .column-crmm_part_number {
+	width: 120px;
+}
+
+.crmm-admin-thumb {
+	display: inline-flex;
+	width: 52px;
+	height: 52px;
+	align-items: center;
+	justify-content: center;
+	object-fit: contain;
+	background: #fff;
+	border: 1px solid #dcdcde;
+	border-radius: 4px;
+}
+
+.crmm-admin-thumb.is-empty {
+	color: #787c82;
+	background: #f6f7f7;
+}
+
+.crmm-badge {
+	display: inline-block;
+	padding: 2px 7px;
+	border: 1px solid currentColor;
+	border-radius: 999px;
+	font-size: 11px;
+	font-weight: 600;
+	line-height: 1.4;
+}
+
+.crmm-badge.is-ready {
+	color: #116329;
+	background: #edfaef;
+}
+
+.crmm-badge.is-blocked {
+	color: #8a2424;
+	background: #fcf0f1;
+}
+
+@media screen and (max-width: 1200px) {
+	.post-type-crmm_trim_profile .wp-list-table .column-crmm_shop_status,
+	.post-type-crmm_trim_profile .wp-list-table .column-crmm_workflow {
+		display: none;
+	}
+}
