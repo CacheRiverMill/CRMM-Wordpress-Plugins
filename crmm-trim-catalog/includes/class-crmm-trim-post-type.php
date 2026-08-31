@@ -38,6 +38,7 @@ final class CRMM_Trim_Post_Type {
 				'publicly_queryable'  => true,
 				'show_ui'             => true,
 				'show_in_menu'        => true,
+				'capability_type'     => array( 'crmm_trim_profile', 'crmm_trim_profiles' ),
 				'map_meta_cap'        => true,
 			),
 		);

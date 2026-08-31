@@ -10,9 +10,8 @@ final class CRMM_Trim_Admin {
 		add_action( 'before_delete_post', array( __CLASS__, 'void_deleted_number' ) );
 		add_action( 'admin_menu', array( 'CRMM_Trim_Importer', 'register_page' ) );
 		add_action( 'admin_post_crmm_trim_import', array( 'CRMM_Trim_Importer', 'handle_upload' ) );
-
-		add_filter( 'manage_' . CRMM_Trim_Post_Type::POST_TYPE . '_posts_columns', array( __CLASS__, 'add_columns' ) );
-		add_action( 'manage_' . CRMM_Trim_Post_Type::POST_TYPE . '_posts_custom_column', array( __CLASS__, 'render_column' ), 10, 2 );
+		add_action( 'wp_ajax_crmm_preview_trim_number', array( __CLASS__, 'preview_number' ) );
+		add_action( 'admin_enqueue_scripts', array( __CLASS__, 'enqueue_editor_assets' ) );
 	}
 
 	public static function add_number_meta_box(): void {
@@ -40,24 +39,20 @@ final class CRMM_Trim_Admin {
 			return;
 		}
 
-		if ( ! current_user_can( 'manage_options' ) ) {
-			echo '<p>' . esc_html__( 'An administrator must assign the part number.', 'crmm-trim-catalog' ) . '</p>';
+		if ( ! current_user_can( CRMM_Trim_Capabilities::ASSIGN_NUMBERS ) ) {
+			echo '<p>' . esc_html__( 'A catalog manager with number-assignment permission must assign the part number.', 'crmm-trim-catalog' ) . '</p>';
 			return;
 		}
 
 		echo '<p>' . esc_html__( 'Assignment uses the next number after the highest existing number for this category and profile type. Sequence gaps are never filled.', 'crmm-trim-catalog' ) . '</p>';
-		echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
-		wp_nonce_field( 'crmm_assign_trim_number_' . $post->ID );
-		echo '<input type="hidden" name="action" value="crmm_assign_trim_number">';
-		echo '<input type="hidden" name="post_id" value="' . esc_attr( (string) $post->ID ) . '">';
-		submit_button( __( 'Assign Next Part Number', 'crmm-trim-catalog' ), 'primary', 'submit', false );
-		echo '</form>';
+		echo '<p id="crmm-expected-number" class="description">' . esc_html__( 'Select a category and profile type to preview the expected next number.', 'crmm-trim-catalog' ) . '</p>';
+		echo '<button type="button" class="button button-primary" id="crmm-assign-number" data-post-id="' . esc_attr( (string) $post->ID ) . '" data-nonce="' . esc_attr( wp_create_nonce( 'crmm_assign_trim_number_' . $post->ID ) ) . '" data-action-url="' . esc_url( admin_url( 'admin-post.php' ) ) . '">' . esc_html__( 'Assign Next Part Number', 'crmm-trim-catalog' ) . '</button>';
 	}
 
 	public static function assign_number(): void {
 		$post_id = isset( $_POST['post_id'] ) ? absint( wp_unslash( $_POST['post_id'] ) ) : 0;
 
-		if ( ! $post_id || ! current_user_can( 'manage_options' ) || ! current_user_can( 'edit_post', $post_id ) ) {
+		if ( ! $post_id || ! current_user_can( CRMM_Trim_Capabilities::ASSIGN_NUMBERS ) || ! current_user_can( 'edit_post', $post_id ) ) {
 			wp_die(
 				esc_html__( 'You are not allowed to assign a number to this profile.', 'crmm-trim-catalog' ),
 				esc_html__( 'Forbidden', 'crmm-trim-catalog' ),
@@ -109,23 +104,62 @@ final class CRMM_Trim_Admin {
 		}
 	}
 
-	public static function add_columns( array $columns ): array {
-		$columns['crmm_part_number'] = __( 'Part Number', 'crmm-trim-catalog' );
-		if ( current_user_can( 'manage_options' ) ) {
-			$columns['crmm_verification'] = __( 'Verification', 'crmm-trim-catalog' );
+	public static function preview_number(): void {
+		check_ajax_referer( 'crmm_preview_trim_number', 'nonce' );
+		$post_id = isset( $_POST['post_id'] ) ? absint( wp_unslash( $_POST['post_id'] ) ) : 0;
+		if ( ! current_user_can( CRMM_Trim_Capabilities::ASSIGN_NUMBERS ) || ( $post_id && ! current_user_can( 'edit_post', $post_id ) ) ) {
+			wp_send_json_error( array( 'message' => __( 'You are not allowed to preview part numbers.', 'crmm-trim-catalog' ) ), 403 );
 		}
-		return $columns;
+
+		$category = CRMM_Trim_Taxonomies::category_term_by_code( sanitize_text_field( wp_unslash( $_POST['category_code'] ?? '' ) ) );
+		$subtype  = CRMM_Trim_Taxonomies::subtype_term_by_code( sanitize_text_field( wp_unslash( $_POST['subtype_code'] ?? '' ) ) );
+		if ( ! $category || ! $subtype || ! CRMM_Trim_Taxonomies::subtype_matches_category( $subtype->term_id, (string) get_term_meta( $category->term_id, 'crmm_category_code', true ) ) ) {
+			wp_send_json_error( array( 'message' => __( 'Choose a matching category and profile type.', 'crmm-trim-catalog' ) ), 400 );
+		}
+
+		$number = CRMM_Trim_Number_Registry::preview_next(
+			(string) get_term_meta( $category->term_id, 'crmm_category_code', true ),
+			(string) get_term_meta( $subtype->term_id, 'crmm_subtype_code', true )
+		);
+		wp_send_json_success( array( 'part_number' => $number ) );
 	}
 
-	public static function render_column( string $column, int $post_id ): void {
-		if ( 'crmm_part_number' === $column ) {
-			echo esc_html( CRMM_Trim_Number_Registry::for_post( $post_id ) ?: '—' );
+	public static function enqueue_editor_assets( string $hook ): void {
+		if ( ! in_array( $hook, array( 'post.php', 'post-new.php' ), true ) ) {
+			return;
+		}
+		$screen = get_current_screen();
+		if ( ! $screen || CRMM_Trim_Post_Type::POST_TYPE !== $screen->post_type ) {
+			return;
 		}
 
-		if ( 'crmm_verification' === $column && current_user_can( 'manage_options' ) ) {
-			$status = (string) get_post_meta( $post_id, 'verification_status', true );
-			echo esc_html( $status ? ucwords( str_replace( '_', ' ', $status ) ) : __( 'Not reviewed', 'crmm-trim-catalog' ) );
+		$category_codes = array();
+		$category_terms = get_terms( array( 'taxonomy' => CRMM_Trim_Taxonomies::CATEGORY_TAXONOMY, 'hide_empty' => false ) );
+		foreach ( is_wp_error( $category_terms ) ? array() : $category_terms as $term ) {
+			$category_codes[ (string) $term->term_id ] = (string) get_term_meta( $term->term_id, 'crmm_category_code', true );
 		}
+		$subtypes = array();
+		$subtype_terms = get_terms( array( 'taxonomy' => CRMM_Trim_Taxonomies::SUBTYPE_TAXONOMY, 'hide_empty' => false ) );
+		foreach ( is_wp_error( $subtype_terms ) ? array() : $subtype_terms as $term ) {
+			$subtypes[ (string) $term->term_id ] = array(
+				'code'     => (string) get_term_meta( $term->term_id, 'crmm_subtype_code', true ),
+				'category' => (string) get_term_meta( $term->term_id, 'crmm_parent_category_code', true ),
+			);
+		}
+
+		wp_enqueue_script( 'crmm-trim-admin-classification', plugins_url( 'assets/js/admin-classification.js', CRMM_TRIM_CATALOG_FILE ), array( 'jquery' ), CRMM_TRIM_CATALOG_VERSION, true );
+		wp_localize_script(
+			'crmm-trim-admin-classification',
+			'CRMMTrimAdmin',
+			array(
+				'ajaxUrl'       => admin_url( 'admin-ajax.php' ),
+				'nonce'         => wp_create_nonce( 'crmm_preview_trim_number' ),
+				'postId'        => get_the_ID(),
+				'categoryCodes' => $category_codes,
+				'subtypes'      => $subtypes,
+				'previewLabel'  => __( 'Expected next number (not reserved):', 'crmm-trim-catalog' ),
+			)
+		);
 	}
 
 	private static function redirect( int $post_id, string $notice ): never {

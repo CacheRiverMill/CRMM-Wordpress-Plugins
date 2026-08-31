@@ -3,6 +3,7 @@
 defined( 'ABSPATH' ) || exit;
 
 final class CRMM_Trim_Fields {
+	private static array $previous_verification_status = array();
 	private const INTERNAL_FIELD_KEYS = array(
 		'field_crmm_old_crmm_number',
 		'field_crmm_source_original_part_number',
@@ -22,6 +23,15 @@ final class CRMM_Trim_Fields {
 	public static function boot(): void {
 		add_action( 'acf/init', array( __CLASS__, 'register' ) );
 		add_filter( 'acf/validate_value/key=field_crmm_trim_subtype', array( __CLASS__, 'validate_subtype' ), 10, 4 );
+		add_filter( 'acf/prepare_field/key=field_crmm_trim_category', array( __CLASS__, 'lock_numbered_classification' ) );
+		add_filter( 'acf/prepare_field/key=field_crmm_trim_subtype', array( __CLASS__, 'lock_numbered_classification' ) );
+		add_filter( 'acf/update_value/key=field_crmm_trim_category', array( __CLASS__, 'protect_numbered_classification' ), 20, 3 );
+		add_filter( 'acf/update_value/key=field_crmm_trim_subtype', array( __CLASS__, 'protect_numbered_classification' ), 20, 3 );
+		add_filter( 'acf/prepare_field/key=field_crmm_marketing_catalog', array( __CLASS__, 'protect_approval_field' ) );
+		add_filter( 'acf/update_value/key=field_crmm_marketing_catalog', array( __CLASS__, 'protect_approval_value' ), 20, 3 );
+		add_filter( 'acf/prepare_field/key=field_crmm_verification_status', array( __CLASS__, 'protect_verification_field' ), 20 );
+		add_filter( 'acf/update_value/key=field_crmm_verification_status', array( __CLASS__, 'stamp_verification' ), 20, 3 );
+		add_action( 'acf/save_post', array( __CLASS__, 'reset_verification_after_material_change' ), 30 );
 
 		foreach ( self::INTERNAL_FIELD_KEYS as $field_key ) {
 			add_filter( 'acf/prepare_field/key=' . $field_key, array( __CLASS__, 'protect_internal_field' ) );
@@ -214,15 +224,85 @@ final class CRMM_Trim_Fields {
 	}
 
 	public static function protect_internal_field( array $field ): array|false {
-		return current_user_can( 'manage_options' ) ? $field : false;
+		return current_user_can( CRMM_Trim_Capabilities::VIEW_INTERNAL ) ? $field : false;
 	}
 
 	public static function protect_internal_value( mixed $value, int|string $post_id, array $field ): mixed {
-		if ( current_user_can( 'manage_options' ) ) {
+		if ( current_user_can( CRMM_Trim_Capabilities::VIEW_INTERNAL ) ) {
 			return $value;
 		}
 
 		return get_post_meta( (int) $post_id, (string) $field['name'], true );
+	}
+
+	public static function lock_numbered_classification( array $field ): array {
+		$post_id = self::current_post_id();
+		if ( $post_id && CRMM_Trim_Number_Registry::for_post( $post_id ) ) {
+			$field['disabled'] = 1;
+			$field['instructions'] = trim( (string) ( $field['instructions'] ?? '' ) . ' ' . __( 'Classification is locked because a permanent part number has been assigned.', 'crmm-trim-catalog' ) );
+		}
+		return $field;
+	}
+
+	public static function protect_numbered_classification( mixed $value, int|string $post_id, array $field ): mixed {
+		$post_id = (int) $post_id;
+		if ( ! $post_id || ! CRMM_Trim_Number_Registry::for_post( $post_id ) ) {
+			return $value;
+		}
+		$existing = get_post_meta( $post_id, (string) $field['name'], true );
+		return '' !== (string) $existing ? $existing : $value;
+	}
+
+	public static function protect_approval_field( array $field ): array|false {
+		return current_user_can( CRMM_Trim_Capabilities::APPROVE_PROFILES ) ? $field : false;
+	}
+
+	public static function protect_approval_value( mixed $value, int|string $post_id, array $field ): mixed {
+		if ( current_user_can( CRMM_Trim_Capabilities::APPROVE_PROFILES ) ) {
+			return $value;
+		}
+		return get_post_meta( (int) $post_id, (string) $field['name'], true );
+	}
+
+	public static function protect_verification_field( array $field ): array|false {
+		return current_user_can( CRMM_Trim_Capabilities::VERIFY_PROFILES ) ? $field : false;
+	}
+
+	public static function stamp_verification( mixed $value, int|string $post_id, array $field ): mixed {
+		$post_id = (int) $post_id;
+		if ( ! $post_id || ! current_user_can( CRMM_Trim_Capabilities::VERIFY_PROFILES ) ) {
+			return get_post_meta( $post_id, (string) $field['name'], true );
+		}
+
+		self::$previous_verification_status[ $post_id ] = (string) get_post_meta( $post_id, 'verification_status', true );
+		if ( 'verified' === $value ) {
+			update_post_meta( $post_id, 'verified_by', get_current_user_id() );
+			update_post_meta( $post_id, '_verified_by', 'field_crmm_verified_by' );
+			update_post_meta( $post_id, 'verification_date', current_time( 'Y-m-d' ) );
+			update_post_meta( $post_id, '_verification_date', 'field_crmm_verification_date' );
+			CRMM_Trim_Audit::record( $post_id, 'profile_verified' );
+		}
+		return $value;
+	}
+
+	public static function reset_verification_after_material_change( int|string $post_id ): void {
+		$post_id = (int) $post_id;
+		if ( ! $post_id || CRMM_Trim_Post_Type::POST_TYPE !== get_post_type( $post_id ) ) {
+			return;
+		}
+
+		$fingerprint = self::material_fingerprint( $post_id );
+		$previous    = (string) get_post_meta( $post_id, '_crmm_verified_fingerprint', true );
+		$status      = (string) get_post_meta( $post_id, 'verification_status', true );
+		$was_status = self::$previous_verification_status[ $post_id ] ?? $status;
+
+		if ( 'verified' === $status && 'verified' === $was_status && '' !== $previous && ! hash_equals( $previous, $fingerprint ) ) {
+			update_post_meta( $post_id, 'verification_status', 'not_reviewed' );
+			update_post_meta( $post_id, 'verified_by', '' );
+			update_post_meta( $post_id, 'verification_date', '' );
+			CRMM_Trim_Audit::record( $post_id, 'verification_reset_after_change' );
+		}
+		update_post_meta( $post_id, '_crmm_verified_fingerprint', $fingerprint );
 	}
 
 	public static function validate_subtype( mixed $valid, mixed $value, array $field, string $input ): mixed {
@@ -316,5 +396,23 @@ final class CRMM_Trim_Fields {
 			'library'      => 'all',
 			'mime_types'   => $mime_types,
 		);
+	}
+
+	private static function current_post_id(): int {
+		global $post;
+		if ( $post instanceof WP_Post ) {
+			return $post->ID;
+		}
+		return isset( $_GET['post'] ) ? absint( wp_unslash( $_GET['post'] ) ) : 0;
+	}
+
+	private static function material_fingerprint( int $post_id ): string {
+		$values = array();
+		foreach ( array( 'catalog_width', 'catalog_height', 'profile_image', 'profile_render', 'isometric_view', 'pdf_download', 'dxf_download', 'download_revision', 'download_date' ) as $meta_key ) {
+			$values[ $meta_key ] = get_post_meta( $post_id, $meta_key, true );
+		}
+		$values['categories'] = wp_get_post_terms( $post_id, CRMM_Trim_Taxonomies::CATEGORY_TAXONOMY, array( 'fields' => 'ids' ) );
+		$values['subtypes']   = wp_get_post_terms( $post_id, CRMM_Trim_Taxonomies::SUBTYPE_TAXONOMY, array( 'fields' => 'ids' ) );
+		return hash( 'sha256', wp_json_encode( $values ) );
 	}
 }
