@@ -15,6 +15,14 @@ final class CRMM_Trim_Importer {
 		'seq_num',
 	);
 
+	private const IMAGE_ASSOCIATION_COLUMNS = array(
+		'id',
+		'part_number',
+		'profile_image',
+		'profile_render',
+		'isometric_view',
+	);
+
 	public static function register_page(): void {
 		add_submenu_page(
 			'edit.php?post_type=' . CRMM_Trim_Post_Type::POST_TYPE,
@@ -128,6 +136,10 @@ final class CRMM_Trim_Importer {
 		$headers = array_map( static fn( $header ) => trim( (string) $header, "\xEF\xBB\xBF \t\n\r\0\x0B\"" ), $headers );
 		$missing = array_diff( self::REQUIRED_COLUMNS, $headers );
 		if ( $missing ) {
+			$image_missing = array_diff( self::IMAGE_ASSOCIATION_COLUMNS, $headers );
+			if ( ! $image_missing ) {
+				return self::import_image_associations( $handle, $headers );
+			}
 			fclose( $handle );
 			return new WP_Error( 'csv_missing_columns', sprintf( __( 'Missing required columns: %s', 'crmm-trim-catalog' ), implode( ', ', $missing ) ) );
 		}
@@ -164,6 +176,86 @@ final class CRMM_Trim_Importer {
 
 		fclose( $handle );
 		return $summary;
+	}
+
+	private static function import_image_associations( $handle, array $headers ): array {
+		$batch_limit = 40;
+		$summary = array(
+			'created'     => 0,
+			'updated'     => 0,
+			'skipped'     => 0,
+			'attachments' => array(),
+			'errors'      => array(),
+		);
+		$line = 1;
+
+		while ( ( $values = fgetcsv( $handle ) ) !== false ) {
+			++$line;
+			if ( 1 === count( $values ) && '' === trim( (string) $values[0] ) ) {
+				++$summary['skipped'];
+				continue;
+			}
+			if ( count( $values ) !== count( $headers ) ) {
+				$summary['errors'][] = sprintf( __( 'Line %d: column count does not match the header.', 'crmm-trim-catalog' ), $line );
+				continue;
+			}
+
+			$row         = array_combine( $headers, $values );
+			$legacy_id   = absint( $row['id'] );
+			$part_number = CRMM_Trim_Number_Registry::normalize_part_number( (string) $row['part_number'] );
+			$post_id     = self::find_existing( $legacy_id, $part_number );
+			if ( ! $post_id ) {
+				$summary['errors'][] = sprintf( __( 'Line %1$d (%2$s): no matching trim profile was found.', 'crmm-trim-catalog' ), $line, $part_number ?: 'unknown' );
+				continue;
+			}
+
+			$changed = false;
+			foreach ( array( 'profile_image', 'profile_render', 'isometric_view' ) as $field_name ) {
+				$url = esc_url_raw( trim( (string) ( $row[ $field_name ] ?? '' ) ) );
+				if ( '' === $url || get_post_meta( $post_id, $field_name, true ) ) {
+					continue;
+				}
+				update_post_meta( $post_id, '_crmm_legacy_' . $field_name . '_url', $url );
+				$result = self::download_image( $post_id, $field_name, $url );
+				if ( is_wp_error( $result ) ) {
+					$summary['errors'][] = sprintf( __( 'Line %1$d (%2$s), %3$s: %4$s', 'crmm-trim-catalog' ), $line, $part_number, $field_name, $result->get_error_message() );
+					continue;
+				}
+				$summary['attachments'][] = $result;
+				$changed = true;
+			}
+
+			if ( $changed ) {
+				++$summary['updated'];
+			} else {
+				++$summary['skipped'];
+			}
+			if ( count( $summary['attachments'] ) >= $batch_limit ) {
+				break;
+			}
+		}
+
+		fclose( $handle );
+		$previous_attachments = (array) get_option( 'crmm_trim_last_image_import_attachments', array() );
+		update_option(
+			'crmm_trim_last_image_import_attachments',
+			array_values( array_unique( array_map( 'absint', array_merge( $previous_attachments, $summary['attachments'] ) ) ) ),
+			false
+		);
+		return $summary;
+	}
+
+	private static function download_image( int $post_id, string $field_name, string $url ): int|WP_Error {
+		require_once ABSPATH . 'wp-admin/includes/file.php';
+		require_once ABSPATH . 'wp-admin/includes/media.php';
+		require_once ABSPATH . 'wp-admin/includes/image.php';
+
+		$attachment_id = media_sideload_image( $url, $post_id, null, 'id' );
+		if ( is_wp_error( $attachment_id ) ) {
+			return $attachment_id;
+		}
+		self::update_field( 'field_crmm_' . $field_name, $field_name, $attachment_id, $post_id );
+		return (int) $attachment_id;
 	}
 
 	private static function import_row( array $row, bool $download_images ): string|WP_Error {
