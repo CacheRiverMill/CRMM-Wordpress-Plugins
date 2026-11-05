@@ -79,7 +79,9 @@ Admin search includes titles, current and legacy part numbers, category, profile
 
 Publishing is blocked when a profile does not have a valid registry-backed number and matching classification, marketing approval, verification, catalog dimensions, and a primary profile image.
 
-The editor's **Publishing requirements** panel shows all five saved requirements, with the exact saved verification status and an action for each unmet requirement. The profile list also displays the reasons beneath its readiness badge; no hovering is needed. Optional files and knife availability are explicitly identified as nonblocking.
+The editor's **Publishing requirements** panel shows all five saved requirements, with the exact saved verification status and an action for each unmet requirement. The profile list displays only the unmet requirement names beneath its readiness badge; detailed actions stay in the editor. Optional files and knife availability are explicitly identified as nonblocking.
+
+Use **All readiness states**, **Ready to publish**, or **Has blockers** to filter the list. The filter and Ready to Publish queue evaluate the same five requirements as the badge, before pagination; search, category, status, and other selected filters still apply. Profile/render thumbnails contain the uncropped source image in a fixed box so the entire profile remains identifiable.
 
 Correct the indicated fields and **Save draft**, then **Publish**. Requirements use saved values; changing a dropdown alone does not update the publishing decision. The panel marks unsaved field edits and refreshes after a successful block-editor save, including the metabox save phase. **Refresh saved checks** is available if needed. A blocked block-editor publish request returns the actual reasons as a visible error instead of silently reverting to draft. These interface changes do not alter approval/verification criteria or any live review records.
 

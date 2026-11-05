@@ -75,12 +75,13 @@ final class CRMM_Trim_Admin_List {
 				break;
 			case 'crmm_readiness':
 				$readiness = CRMM_Trim_Readiness::evaluate( $post_id );
-				$details = array_merge( $readiness['blockers'], $readiness['warnings'] );
-				printf( '<span class="crmm-badge %1$s" title="%2$s">%3$s</span>', $readiness['ready'] ? 'is-ready' : 'is-blocked', esc_attr( implode( ' ', $details ) ), esc_html( $readiness['ready'] ? __( 'Ready', 'crmm-trim-catalog' ) : sprintf( __( '%d blockers', 'crmm-trim-catalog' ), count( $readiness['blockers'] ) ) ) );
+				printf( '<span class="crmm-badge %1$s">%2$s</span>', $readiness['ready'] ? 'is-ready' : 'is-blocked', esc_html( $readiness['ready'] ? __( 'Ready', 'crmm-trim-catalog' ) : sprintf( __( '%d blockers', 'crmm-trim-catalog' ), count( $readiness['blockers'] ) ) ) );
 				if ( $readiness['blockers'] ) {
 					echo '<ul class="crmm-list-blockers">';
-					foreach ( $readiness['blockers'] as $blocker ) {
-						echo '<li>' . esc_html( $blocker ) . '</li>';
+					foreach ( $readiness['checks'] as $check ) {
+						if ( ! $check['passed'] ) {
+							echo '<li>' . esc_html( $check['label'] ) . '</li>';
+						}
 					}
 					echo '</ul>';
 				}
@@ -110,6 +111,7 @@ final class CRMM_Trim_Admin_List {
 		self::select_filter( 'crmm_marketing_catalog', __( 'All approval states', 'crmm-trim-catalog' ), array( '1' => __( 'Marketing approved', 'crmm-trim-catalog' ), '0' => __( 'Not marketing approved', 'crmm-trim-catalog' ) ) );
 		self::select_filter( 'crmm_verification_status', __( 'All verification states', 'crmm-trim-catalog' ), array( 'not_reviewed' => __( 'Not reviewed', 'crmm-trim-catalog' ), 'in_progress' => __( 'In progress', 'crmm-trim-catalog' ), 'verified' => __( 'Verified', 'crmm-trim-catalog' ), 'discrepancy' => __( 'Discrepancy', 'crmm-trim-catalog' ) ) );
 		self::select_filter( 'crmm_number_state', __( 'All number states', 'crmm-trim-catalog' ), array( 'numbered' => __( 'Numbered', 'crmm-trim-catalog' ), 'unnumbered' => __( 'Unnumbered', 'crmm-trim-catalog' ) ) );
+		self::select_filter( 'crmm_readiness', __( 'All readiness states', 'crmm-trim-catalog' ), array( 'ready' => __( 'Ready to publish', 'crmm-trim-catalog' ), 'blocked' => __( 'Has blockers', 'crmm-trim-catalog' ) ) );
 	}
 
 	public static function apply_query( WP_Query $query ): void {
@@ -154,14 +156,36 @@ final class CRMM_Trim_Admin_List {
 		} elseif ( 'discrepancies' === $queue ) {
 			$meta_query[] = array( 'key' => 'verification_status', 'value' => 'discrepancy' );
 		} elseif ( 'ready' === $queue ) {
-			$meta_query[] = array( 'key' => 'marketing_catalog', 'value' => '1' );
-			$meta_query[] = array( 'key' => 'verification_status', 'value' => 'verified' );
-			$meta_query[] = array( 'key' => CRMM_Trim_Number_Registry::PART_NUMBER_META, 'compare' => 'EXISTS' );
+			self::filter_readiness( $query, 'ready' );
+		}
+		$readiness = isset( $_GET['crmm_readiness'] ) && is_scalar( $_GET['crmm_readiness'] ) ? sanitize_key( wp_unslash( $_GET['crmm_readiness'] ) ) : '';
+		if ( in_array( $readiness, array( 'ready', 'blocked' ), true ) ) {
+			self::filter_readiness( $query, $readiness );
 		}
 
 		if ( count( $meta_query ) > 1 ) {
 			$query->set( 'meta_query', $meta_query );
 		}
+	}
+
+	private static function filter_readiness( WP_Query $query, string $state ): void {
+		// Evaluate every candidate before the main query paginates, using the badge's rules.
+		$ids = get_posts( array( 'post_type' => CRMM_Trim_Post_Type::POST_TYPE, 'post_status' => get_post_stati(), 'posts_per_page' => -1, 'fields' => 'ids', 'suppress_filters' => true ) );
+		update_meta_cache( 'post', $ids );
+		update_object_term_cache( $ids, CRMM_Trim_Post_Type::POST_TYPE );
+		$matches = array();
+		foreach ( $ids as $id ) {
+			if ( CRMM_Trim_Readiness::evaluate( (int) $id )['state'] === $state ) {
+				$matches[] = (int) $id;
+			}
+		}
+		$existing = $query->get( 'post__in' );
+		if ( $existing ) {
+			$matches = array_values( array_intersect( $matches, array_map( 'intval', (array) $existing ) ) );
+		}
+		$matches = array_values( array_diff( $matches, array_map( 'intval', (array) $query->get( 'post__not_in' ) ) ) );
+		// An empty post__in means all posts to WordPress, so explicitly match no IDs.
+		$query->set( 'post__in', $matches ?: array( 0 ) );
 	}
 
 	public static function part_number_order( array $clauses, WP_Query $query ): array {
@@ -238,7 +262,8 @@ final class CRMM_Trim_Admin_List {
 	private static function render_attachment( int $post_id, string $meta_key ): void {
 		$attachment_id = absint( get_post_meta( $post_id, $meta_key, true ) );
 		if ( $attachment_id ) {
-			echo wp_kses_post( wp_get_attachment_image( $attachment_id, array( 52, 52 ), false, array( 'class' => 'crmm-admin-thumb' ) ) );
+			// Square thumbnail derivatives may already be cropped; contain the original instead.
+			echo '<span class="crmm-admin-thumb">' . wp_kses_post( wp_get_attachment_image( $attachment_id, 'full', false, array( 'class' => 'crmm-admin-thumb__image', 'loading' => 'lazy' ) ) ) . '</span>';
 		} else {
 			echo '<span class="crmm-admin-thumb is-empty">—</span>';
 		}

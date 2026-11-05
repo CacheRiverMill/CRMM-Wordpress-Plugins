@@ -7,6 +7,7 @@ class WP_Error { public function __construct( public string $code, public string
 class WP_REST_Request { public function __construct( private array $params ) {} public function get_param( $key ) { return $this->params[$key] ?? null; } }
 class WP_Post { public function __construct( public int $ID, public string $post_title = '', public string $post_type = 'crmm_trim_profile' ) {} }
 class WP_Term { public function __construct( public int $term_id ) {} }
+class WP_Query { public function __construct( public array $args, public bool $main = true ) {} public function get($key) { return $this->args[$key] ?? null; } public function set($key,$value) { $this->args[$key]=$value; } public function is_main_query() { return $this->main; } }
 class Json_Response extends Exception { public function __construct( public bool $success, public array $data, public int $status = 200 ) { parent::__construct(); } }
 function __( $text, $domain = '' ) { return $text; }
 function is_wp_error( $value ) { return $value instanceof WP_Error; }
@@ -18,6 +19,13 @@ function esc_html( $value ) { return htmlspecialchars( (string) $value, ENT_QUOT
 function esc_attr( $value ) { return esc_html( $value ); }
 function esc_html__( $value, $domain = '' ) { return esc_html( $value ); }
 function set_transient( $key, $value, $expiry ) { $GLOBALS['transients'][$key] = $value; }
+function is_admin() { return true; }
+function get_posts($args) { $GLOBALS['candidate_query']=$args; return array_keys($GLOBALS['posts']); }
+function get_post_stati() { return array('publish','draft','pending','private','future','trash','auto-draft'); }
+function update_meta_cache(...$args) {}
+function update_object_term_cache(...$args) {}
+function wp_get_attachment_image($id,$size,$icon,$attrs) { $GLOBALS['image_request']=array('id'=>$id,'size'=>$size,'attrs'=>$attrs); return '<img class="'.esc_attr($attrs['class']).'" src="original-profile.webp">'; }
+function wp_kses_post($html) { return $html; }
 function current_user_can( ...$args ) { return $GLOBALS['allowed']; }
 function get_current_user_id() { return 7; }
 function current_time( ...$args ) { return '2026-11-05'; }
@@ -185,7 +193,7 @@ run_case( 'editor and list show blocker reasons as visible escaped text', functi
  ob_start(); CRMM_Trim_Readiness::render_meta_box(get_post(309)); $html=ob_get_clean();
  check(str_contains($html,'Needs attention: Profile verification') && str_contains($html,'Save draft') && str_contains($html,'Optional files'), 'Editor lacks useful requirements');
  ob_start(); CRMM_Trim_Admin_List::render_column('crmm_readiness',309); $html=ob_get_clean();
- check(str_contains($html,'<ul class="crmm-list-blockers">') && str_contains($html,'<li>Profile verification: Discrepancy found.'), 'List reasons are hidden');
+ check(str_contains($html,'<ul class="crmm-list-blockers">') && str_contains($html,'<li>Profile verification</li>') && !str_contains($html,'authorized reviewer'), 'List does not show concise blocker names');
  update_post_meta(309,'catalog_width','<script>bad</script>');
  ob_start(); CRMM_Trim_Readiness::render_requirements(309); $html=ob_get_clean();
  check(!str_contains($html,'<script>') && str_contains($html,'&lt;script&gt;'), 'Saved detail not escaped');
@@ -209,4 +217,44 @@ run_case( 'readiness refresh is permission checked and shows current saved requi
  try { CRMM_Trim_Readiness::ajax_readiness(); } catch(Json_Response $r) { check($r->success && str_contains($r->data['html'],'Ready to publish'),'Saved requirements unavailable'); }
  $GLOBALS['allowed']=false;
  try { CRMM_Trim_Readiness::ajax_readiness(); } catch(Json_Response $r) { check(!$r->success && $r->status===403,'Readiness access not checked'); }
+} );
+run_case( 'table names multiple blockers without editor instructions or optional warnings', function () {
+ ready_profile(); update_post_meta(309,'marketing_catalog',0); update_post_meta(309,'verification_status','discrepancy');
+ ob_start(); CRMM_Trim_Admin_List::render_column('crmm_readiness',309); $html=ob_get_clean();
+ check(str_contains($html,'<li>Marketing approval</li>') && str_contains($html,'<li>Profile verification</li>'), 'Blocker names missing');
+ check(!str_contains($html,'Set Approved') && !str_contains($html,'Discrepancy found') && !str_contains($html,'Profile PDF'), 'Table contains verbose guidance');
+} );
+run_case( 'profile and render thumbnails request uncropped sources inside containment boxes', function () {
+ ready_profile(); update_post_meta(309,'profile_render',456);
+ foreach(array('crmm_profile_image','crmm_render') as $column) {
+  ob_start(); CRMM_Trim_Admin_List::render_column($column,309); $html=ob_get_clean();
+  check($GLOBALS['image_request']['size']==='full' && str_contains($html,'<span class="crmm-admin-thumb"><img'),'Thumbnail is cropped or lacks container');
+ }
+} );
+run_case( 'ready and blocked filters partition profiles using the displayed readiness rules', function () {
+ ready_profile();
+ $_GET=array('crmm_readiness'=>'ready'); $q=new WP_Query(array('post_type'=>'crmm_trim_profile','posts_per_page'=>1,'paged'=>2,'s'=>'4-CR','post_status'=>'draft'));
+ CRMM_Trim_Admin_List::apply_query($q);
+ check($q->get('post__in')===array(309),'Ready filter includes a blocked profile');
+ check($q->get('paged')===2 && $q->get('s')==='4-CR' && $q->get('post_status')==='draft','Filter replaces existing query restrictions');
+ check($GLOBALS['candidate_query']['posts_per_page']===-1,'Readiness evaluated after pagination');
+ $_GET=array('crmm_readiness'=>'blocked'); $q=new WP_Query(array('post_type'=>'crmm_trim_profile')); CRMM_Trim_Admin_List::apply_query($q);
+ check($q->get('post__in')===array(400),'Blocked filter does not match badge state');
+} );
+run_case( 'readiness filters preserve inclusions, exclusions and empty results', function () {
+ ready_profile(); $_GET=array('crmm_readiness'=>'ready');
+ foreach(array(array('post__in'=>array(400)),array('post__not_in'=>array(309))) as $restriction) {
+  $q=new WP_Query(array_merge(array('post_type'=>'crmm_trim_profile'),$restriction)); CRMM_Trim_Admin_List::apply_query($q);
+  check($q->get('post__in')===array(0),'Empty readiness match would show all profiles');
+ }
+} );
+run_case( 'ready queue also requires dimensions, primary image and matching classification', function () {
+ ready_profile(); unset($GLOBALS['meta'][309]['profile_image']); $_GET=array('crmm_queue'=>'ready');
+ $q=new WP_Query(array('post_type'=>'crmm_trim_profile')); CRMM_Trim_Admin_List::apply_query($q);
+ check($q->get('post__in')===array(0),'Ready queue ignores missing primary image');
+} );
+run_case( 'all-readiness selection and non-profile queries are not restricted', function () {
+ foreach(array(array('post_type'=>'crmm_trim_profile'),array('post_type'=>'post')) as $args) {
+  $_GET=array(); $q=new WP_Query($args); CRMM_Trim_Admin_List::apply_query($q); check($q->get('post__in')===null,'Unfiltered query restricted');
+ }
 } );
