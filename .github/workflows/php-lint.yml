@@ -43,5 +43,5 @@ jobs:
         with:
           node-version: '22'
       - name: Test editor previews and permanent identities
-        run: node --test tests/admin-classification.test.cjs
+        run: node --test tests/*.test.cjs
 

@@ -44,9 +44,20 @@
 	background: #fcf0f1;
 }
 
+.crmm-readiness-summary { font-size: 15px; }
+.crmm-readiness-summary.is-blocked { color: #8a2424; }
+.crmm-readiness-summary.is-ready { color: #116329; }
+.crmm-readiness-checks { list-style: none; margin: 12px 0; padding: 0; }
+.crmm-readiness-checks li { margin: 0 0 8px; padding: 9px 12px; border-left: 3px solid #116329; background: #f4f8f5; }
+.crmm-readiness-checks li.is-blocked { border-color: #b32d2e; background: #fcf0f1; }
+.crmm-readiness-checks p { margin: 5px 0 0; }
+.crmm-list-blockers { margin: 8px 0 0 16px; list-style: disc; font-size: 12px; }
+.crmm-list-blockers li { margin-bottom: 6px; }
+
 @media screen and (max-width: 1200px) {
 	.post-type-crmm_trim_profile .wp-list-table .column-crmm_shop_status,
 	.post-type-crmm_trim_profile .wp-list-table .column-crmm_workflow {
 		display: none;
 	}
 }
+

@@ -3,7 +3,8 @@
 define( 'ABSPATH', __DIR__ );
 define( 'CRMM_TRIM_CATALOG_VERSION', 'test' );
 define( 'MINUTE_IN_SECONDS', 60 );
-class WP_Error { public function __construct( public string $code, public string $message ) {} public function get_error_message() { return $this->message; } }
+class WP_Error { public function __construct( public string $code, public string $message, public array $data = array() ) {} public function get_error_message() { return $this->message; } }
+class WP_REST_Request { public function __construct( private array $params ) {} public function get_param( $key ) { return $this->params[$key] ?? null; } }
 class WP_Post { public function __construct( public int $ID, public string $post_title = '', public string $post_type = 'crmm_trim_profile' ) {} }
 class WP_Term { public function __construct( public int $term_id ) {} }
 class Json_Response extends Exception { public function __construct( public bool $success, public array $data, public int $status = 200 ) { parent::__construct(); } }
@@ -13,6 +14,10 @@ function absint( $value ) { return abs( (int) $value ); }
 function wp_unslash( $value ) { return $value; }
 function sanitize_text_field( $value ) { return trim( $value ); }
 function sanitize_key( $value ) { return strtolower( $value ); }
+function esc_html( $value ) { return htmlspecialchars( (string) $value, ENT_QUOTES ); }
+function esc_attr( $value ) { return esc_html( $value ); }
+function esc_html__( $value, $domain = '' ) { return esc_html( $value ); }
+function set_transient( $key, $value, $expiry ) { $GLOBALS['transients'][$key] = $value; }
 function current_user_can( ...$args ) { return $GLOBALS['allowed']; }
 function get_current_user_id() { return 7; }
 function current_time( ...$args ) { return '2026-11-05'; }
@@ -58,7 +63,7 @@ class Test_DB {
  public function insert( $table, $values, $formats ) { $this->inserted[] = $values; return 1; }
 }
 $root = getenv( 'PLUGIN_ROOT' ) ?: __DIR__ . '/../crmm-trim-catalog';
-foreach ( array( 'post-type', 'capabilities', 'taxonomies', 'number-registry', 'audit', 'integrity', 'fields', 'admin' ) as $name ) require $root . '/includes/class-crmm-trim-' . $name . '.php';
+foreach ( array( 'post-type', 'capabilities', 'taxonomies', 'number-registry', 'audit', 'integrity', 'fields', 'admin', 'readiness', 'admin-list' ) as $name ) require $root . '/includes/class-crmm-trim-' . $name . '.php';
 CRMM_Trim_Fields::boot();
 CRMM_Trim_Fields::register();
 // ACF checks required values at priority 5, then runs the keyed validation filters.
@@ -155,4 +160,53 @@ run_case( 'server title and taxonomy integrity guards remain active', function (
  $GLOBALS['terms'][309]['crmm_trim_subtype'] = array(10);
  CRMM_Trim_Integrity::enforce_numbered_classification(309, array(10), array(), 'crmm_trim_subtype', false, array(40));
  check( $GLOBALS['terms'][309]['crmm_trim_subtype'] === array(40), 'Taxonomy integrity lost' );
+} );
+
+function ready_profile() {
+ foreach ( array('marketing_catalog'=>1,'verification_status'=>'verified','catalog_width'=>'1','catalog_height'=>'3.125','profile_image'=>123) as $key=>$value ) update_post_meta(309,$key,$value);
+}
+run_case( 'verification discrepancy gives a specific actionable blocker', function () {
+ ready_profile(); update_post_meta(309,'verification_status','discrepancy');
+ $r=CRMM_Trim_Readiness::evaluate(309);
+ check(count($r['blockers'])===1 && str_contains($r['blockers'][0],'Discrepancy found') && str_contains($r['blockers'][0],'Internal Shop Records'), 'Blocker lacks status or action');
+ check(count($r['checks'])===5 && count($r['warnings'])===4, 'Required and optional checks not separated');
+} );
+run_case( 'optional assets and unknown knives do not block a ready profile', function () {
+ ready_profile(); check(CRMM_Trim_Readiness::evaluate(309)['ready'], 'Optional assets block publishing');
+} );
+run_case( 'resolving one requirement leaves the other blocker visible', function () {
+ ready_profile(); update_post_meta(309,'verification_status','discrepancy'); update_post_meta(309,'marketing_catalog',0);
+ check(count(CRMM_Trim_Readiness::evaluate(309)['blockers'])===2,'Missing prerequisites not counted');
+ update_post_meta(309,'marketing_catalog',1); $r=CRMM_Trim_Readiness::evaluate(309);
+ check(!$r['ready'] && count($r['blockers'])===1 && str_contains($r['blockers'][0],'Profile verification'),'Remaining requirement disappeared');
+} );
+run_case( 'editor and list show blocker reasons as visible escaped text', function () {
+ ready_profile(); update_post_meta(309,'verification_status','discrepancy');
+ ob_start(); CRMM_Trim_Readiness::render_meta_box(get_post(309)); $html=ob_get_clean();
+ check(str_contains($html,'Needs attention: Profile verification') && str_contains($html,'Save draft') && str_contains($html,'Optional files'), 'Editor lacks useful requirements');
+ ob_start(); CRMM_Trim_Admin_List::render_column('crmm_readiness',309); $html=ob_get_clean();
+ check(str_contains($html,'<ul class="crmm-list-blockers">') && str_contains($html,'<li>Profile verification: Discrepancy found.'), 'List reasons are hidden');
+ update_post_meta(309,'catalog_width','<script>bad</script>');
+ ob_start(); CRMM_Trim_Readiness::render_requirements(309); $html=ob_get_clean();
+ check(!str_contains($html,'<script>') && str_contains($html,'&lt;script&gt;'), 'Saved detail not escaped');
+} );
+run_case( 'REST publication returns the exact blocker and preserves saved data', function () {
+ ready_profile(); update_post_meta(309,'verification_status','discrepancy'); $before=$GLOBALS['meta'];
+ $_POST['acf']['field_crmm_verification_status']='verified';
+ $r=CRMM_Trim_Readiness::validate_rest_publication((object)array('post_status'=>'publish'),new WP_REST_Request(array('id'=>309,'status'=>'publish')));
+ check(is_wp_error($r) && $r->data['status']===400 && str_contains($r->message,'Discrepancy found') && str_contains($r->message,'draft'), 'REST publication silently blocked');
+ check($before===$GLOBALS['meta'],'REST check changed stored verification');
+} );
+run_case( 'saving a correction makes the next publishing check ready', function () {
+ ready_profile(); $post=(object)array('post_status'=>'publish');
+ check(CRMM_Trim_Readiness::validate_rest_publication($post,new WP_REST_Request(array('id'=>309,'status'=>'publish')))===$post,'Ready REST save blocked');
+ check(CRMM_Trim_Readiness::gate_publication(array('post_type'=>'crmm_trim_profile','post_status'=>'publish'),array('ID'=>309))['post_status']==='publish','Ready classic save blocked');
+ update_post_meta(309,'verification_status','not_reviewed');
+ check(CRMM_Trim_Readiness::gate_publication(array('post_type'=>'crmm_trim_profile','post_status'=>'publish'),array('ID'=>309))['post_status']==='draft','Classic guard removed');
+} );
+run_case( 'readiness refresh is permission checked and shows current saved requirements', function () {
+ ready_profile(); $_POST['post_id']=309;
+ try { CRMM_Trim_Readiness::ajax_readiness(); } catch(Json_Response $r) { check($r->success && str_contains($r->data['html'],'Ready to publish'),'Saved requirements unavailable'); }
+ $GLOBALS['allowed']=false;
+ try { CRMM_Trim_Readiness::ajax_readiness(); } catch(Json_Response $r) { check(!$r->success && $r->status===403,'Readiness access not checked'); }
 } );
