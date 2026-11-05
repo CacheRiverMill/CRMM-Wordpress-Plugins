@@ -11,7 +11,8 @@ final class CRMM_Trim_Integrity {
 		add_action( 'save_post_' . CRMM_Trim_Post_Type::POST_TYPE, array( __CLASS__, 'enforce_numbered_title' ), 40, 3 );
 	}
 
-	public static function validate( int $post_id ): true|WP_Error {
+	/** @return true|WP_Error */
+	public static function validate( int $post_id ): bool|WP_Error {
 		$part_number = CRMM_Trim_Number_Registry::for_post( $post_id );
 		if ( '' === $part_number ) {
 			return new WP_Error( 'missing_part_number', __( 'A permanent part number has not been assigned.', 'crmm-trim-catalog' ) );
@@ -98,3 +99,4 @@ final class CRMM_Trim_Integrity {
 		self::$repairing_title = false;
 	}
 }
+
