@@ -35,6 +35,11 @@ jobs:
       - name: Test profile identity and classification
         run: php tests/profile-identity.php
 
+      - name: Test repeated attachment saves
+        run: |
+          php tests/attachment-meta.php
+          NON_REST_TEST=1 php tests/attachment-meta.php
+
   editor-tests:
     runs-on: ubuntu-latest
     steps:

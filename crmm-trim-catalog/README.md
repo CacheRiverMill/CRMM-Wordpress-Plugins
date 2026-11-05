@@ -110,6 +110,14 @@ Before deployment, verify on a disposable WordPress/ACF staging site with both t
 - For an unnumbered profile, missing or incompatible classifications fail validation. A valid selection shows an unreserved preview, and its first valid save assigns one permanent number. Subsequent saves preserve it.
 - Rapidly change selections and save while a preview is pending; old responses cannot change the latest preview or permanent number.
 
+### Repeated attachment saves
+
+Some imported profiles contain duplicate rows for a single attachment field. WordPress's REST no-change check handles only one row; updating multiple identical rows to the same value can affect zero database rows and return `rest_meta_database_error`, interrupting the editor save before ACF metabox edits persist.
+
+During REST requests, the plugin acknowledges an unchanged attachment update only when the user can edit that metadata, all existing rows are identical to the incoming sanitized value, and there are at least two rows. This covers profile images, renders, isometric views and downloadable attachments. It does not delete duplicate data. Real changes, deletions, conflicting values, conditional updates, other filters and non-attachment fields retain their normal save behavior and errors.
+
+Run `php tests/attachment-meta.php` and `NON_REST_TEST=1 php tests/attachment-meta.php`. Set `WP_REST_META_FIELDS_SOURCE` to an official WordPress `class-wp-rest-meta-fields.php` file to additionally reproduce the original failure and test the safeguard through WordPress's actual REST update method with a database double. Full WordPress/ACF integration still requires an editor save, a second unchanged-image save, and a reload confirming the intended approval/verification edits persisted. No local full-site test is included.
+
 ### External drawing-review identity contract
 
 This repository stores verification fields and audit events; it does not contain the drawing-review automation. That external process must identify each record by **WordPress post ID plus permanent registry number**, not by an editor title, next-number preview, slug, or list position. Before comparison and immediately before writing results, re-read the assignment and require the source drawing identity to match. Stop and flag mismatches or changed assignments for review; never carry a result to a different profile.
