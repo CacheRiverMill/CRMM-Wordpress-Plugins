@@ -4,14 +4,16 @@
 	if ( ! config ) {
 		return;
 	}
-	let lastPreview = '';
+	let previewRevision = 0;
+	let previewRequest = null;
 
 	function updatePostTitle( value ) {
-		if ( window.wp && wp.data && wp.data.dispatch( 'core/editor' ) ) {
+		const editor = window.wp && wp.data && wp.data.select ? wp.data.select( 'core/editor' ) : null;
+		if ( editor && editor.getEditedPostAttribute( 'title' ) !== value ) {
 			wp.data.dispatch( 'core/editor' ).editPost( { title: value } );
 		}
 		const classicTitle = $( '#title' );
-		if ( classicTitle.length ) {
+		if ( classicTitle.length && classicTitle.val() !== value ) {
 			classicTitle.val( value ).trigger( 'input' ).trigger( 'change' );
 		}
 	}
@@ -24,6 +26,9 @@
 	}
 
 	function updateSubtypeChoices() {
+		if ( showAssignedNumber() ) {
+			return;
+		}
 		const controls = fields();
 		const categoryCode = config.categoryCodes[ String( controls.category.val() || '' ) ] || '';
 
@@ -40,40 +45,63 @@
 		}
 	}
 
+	function showAssignedNumber() {
+		const numberField = $( '[data-key="field_crmm_part_number"] input' );
+		const assigned = config.assignedNumber || numberField.val();
+		if ( ! assigned ) {
+			return false;
+		}
+		numberField.val( assigned );
+		$( '#crmm-expected-number' ).text( config.assignedLabel + ' ' + assigned );
+		updatePostTitle( assigned );
+		return true;
+	}
+
 	function previewNumber() {
+		const revision = ++previewRevision;
+		if ( previewRequest ) {
+			previewRequest.abort();
+			previewRequest = null;
+		}
+		if ( showAssignedNumber() ) {
+			return;
+		}
 		const controls = fields();
 		const categoryCode = config.categoryCodes[ String( controls.category.val() || '' ) ] || '';
 		const subtype = config.subtypes[ String( controls.subtype.val() || '' ) ];
 		const target = $( '#crmm-expected-number' );
-		const numberField = $( '[data-key="field_crmm_part_number"] input' );
 
 		if ( ! categoryCode || ! subtype || subtype.category !== categoryCode ) {
 			target.text( 'Select a category and profile type to preview the expected next number.' );
-			numberField.val( '' );
-			if ( lastPreview ) {
-				updatePostTitle( '' );
-				lastPreview = '';
-			}
 			return;
 		}
 		target.text( 'Calculating expected number…' );
 
-		$.post( config.ajaxUrl, {
+		previewRequest = $.post( config.ajaxUrl, {
 			action: 'crmm_preview_trim_number',
 			nonce: config.nonce,
 			post_id: config.postId,
 			category_code: categoryCode,
 			subtype_code: subtype.code,
 		} ).done( function ( response ) {
+			if ( revision !== previewRevision || showAssignedNumber() ) {
+				return;
+			}
 			if ( response && response.success ) {
-				target.text( config.previewLabel + ' ' + response.data.part_number );
-				numberField.val( response.data.part_number ).trigger( 'change' );
-				lastPreview = response.data.part_number;
-				updatePostTitle( lastPreview );
+				if ( response.data.assigned ) {
+					config.assignedNumber = response.data.part_number;
+					showAssignedNumber();
+				} else {
+					// A preview is never an assignment or a post title.
+					target.text( config.previewLabel + ' ' + response.data.part_number );
+				}
 			} else if ( response && response.data && response.data.message ) {
 				target.text( response.data.message );
 			}
-		} ).fail( function () {
+		} ).fail( function ( xhr, status ) {
+			if ( revision !== previewRevision || status === 'abort' || showAssignedNumber() ) {
+				return;
+			}
 			target.text( 'The expected number could not be loaded. Save the profile to retry assignment.' );
 		} );
 	}
@@ -97,3 +125,4 @@
 		previewNumber();
 	} );
 } )( jQuery, window.CRMMTrimAdmin );
+

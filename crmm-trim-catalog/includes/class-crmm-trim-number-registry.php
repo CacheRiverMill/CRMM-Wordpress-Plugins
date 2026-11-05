@@ -135,7 +135,8 @@ final class CRMM_Trim_Number_Registry {
 		return self::format( $category_code, $subcategory_code, max( 1000, $maximum + 1 ) );
 	}
 
-	public static function reserve_imported( int $post_id, string $part_number, int $user_id = 0 ): true|WP_Error {
+	/** @return true|WP_Error */
+	public static function reserve_imported( int $post_id, string $part_number, int $user_id = 0 ): bool|WP_Error {
 		global $wpdb;
 
 		$part_number = self::normalize_part_number( $part_number );
@@ -231,3 +232,4 @@ final class CRMM_Trim_Number_Registry {
 		update_post_meta( $post_id, self::SEQUENCE_META, $sequence );
 	}
 }
+

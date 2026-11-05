@@ -22,6 +22,8 @@ final class CRMM_Trim_Fields {
 
 	public static function boot(): void {
 		add_action( 'acf/init', array( __CLASS__, 'register' ) );
+		// Run before ACF's required-field validation (priority 5).
+		add_action( 'acf/validate_save_post', array( __CLASS__, 'validate_classification' ), 1 );
 		add_filter( 'acf/validate_value/key=field_crmm_trim_subtype', array( __CLASS__, 'validate_subtype' ), 10, 4 );
 		add_filter( 'acf/prepare_field/key=field_crmm_trim_category', array( __CLASS__, 'lock_numbered_classification' ) );
 		add_filter( 'acf/prepare_field/key=field_crmm_trim_subtype', array( __CLASS__, 'lock_numbered_classification' ) );
@@ -239,9 +241,70 @@ final class CRMM_Trim_Fields {
 		$post_id = self::current_post_id();
 		if ( $post_id && CRMM_Trim_Number_Registry::for_post( $post_id ) ) {
 			$field['disabled'] = 1;
+			// Only the locked UI is optional; server validation below requires valid saved terms.
+			$field['required'] = 0;
 			$field['instructions'] = trim( (string) ( $field['instructions'] ?? '' ) . ' ' . __( 'Classification is locked because a permanent part number has been assigned.', 'crmm-trim-catalog' ) );
 		}
 		return $field;
+	}
+
+	public static function validate_classification(): void {
+		$post_id = self::submitted_post_id();
+		if ( ! $post_id || CRMM_Trim_Post_Type::POST_TYPE !== get_post_type( $post_id ) ) {
+			return;
+		}
+		if ( ! current_user_can( 'edit_post', $post_id ) ) {
+			acf_add_validation_error( '', __( 'You are not allowed to edit this profile.', 'crmm-trim-catalog' ) );
+			return;
+		}
+		if ( ! isset( $_POST['acf'] ) || ! is_array( $_POST['acf'] ) ) {
+			$_POST['acf'] = array();
+		}
+		if ( ! CRMM_Trim_Number_Registry::for_post( $post_id ) ) {
+			// Retain required validation even if a new profile omits both field keys.
+			$_POST['acf'] += array( 'field_crmm_trim_category' => '', 'field_crmm_trim_subtype' => '' );
+			return;
+		}
+
+		$integrity = CRMM_Trim_Integrity::validate( $post_id );
+		if ( is_wp_error( $integrity ) ) {
+			acf_add_validation_error( '', $integrity->get_error_message() );
+			return;
+		}
+		$category_ids = wp_get_post_terms( $post_id, CRMM_Trim_Taxonomies::CATEGORY_TAXONOMY, array( 'fields' => 'ids' ) );
+		$subtype_ids  = wp_get_post_terms( $post_id, CRMM_Trim_Taxonomies::SUBTYPE_TAXONOMY, array( 'fields' => 'ids' ) );
+		if ( is_wp_error( $category_ids ) || is_wp_error( $subtype_ids ) || 1 !== count( $category_ids ) || 1 !== count( $subtype_ids ) ) {
+			acf_add_validation_error( '', __( 'The saved classification could not be loaded. Reload the profile and try again.', 'crmm-trim-catalog' ) );
+			return;
+		}
+		$category_code = (string) get_term_meta( $category_ids[0], 'crmm_category_code', true );
+		if ( ! CRMM_Trim_Taxonomies::subtype_matches_category( (int) $subtype_ids[0], $category_code ) ) {
+			acf_add_validation_error( '', __( 'The saved profile type does not belong to the saved main category.', 'crmm-trim-catalog' ) );
+			return;
+		}
+
+		foreach ( array( 'field_crmm_trim_category' => $category_ids[0], 'field_crmm_trim_subtype' => $subtype_ids[0] ) as $key => $term_id ) {
+			$value = $_POST['acf'][ $key ] ?? '';
+			if ( ! empty( $value ) && ( ! is_scalar( $value ) || (string) $term_id !== (string) wp_unslash( $value ) ) ) {
+				acf_add_validation_error( 'acf[' . $key . ']', __( 'Classification is locked to the permanent part number.', 'crmm-trim-catalog' ) );
+			}
+			// Disabled selects submit only an empty hidden input, or omit the key entirely.
+			$_POST['acf'][ $key ] = (int) $term_id;
+		}
+	}
+
+	private static function submitted_post_id(): int {
+		$ids = array();
+		foreach ( array( 'post_ID', '_acf_post_id' ) as $key ) {
+			if ( isset( $_POST[ $key ] ) && is_scalar( $_POST[ $key ] ) && ctype_digit( (string) $_POST[ $key ] ) ) {
+				$ids[] = (int) $_POST[ $key ];
+			}
+		}
+		if ( count( array_unique( $ids ) ) > 1 ) {
+			acf_add_validation_error( '', __( 'The submitted profile IDs disagree. Reload the profile before saving.', 'crmm-trim-catalog' ) );
+			return 0;
+		}
+		return $ids[0] ?? 0;
 	}
 
 	public static function protect_numbered_classification( mixed $value, int|string $post_id, array $field ): mixed {
@@ -249,8 +312,11 @@ final class CRMM_Trim_Fields {
 		if ( ! $post_id || ! CRMM_Trim_Number_Registry::for_post( $post_id ) ) {
 			return $value;
 		}
-		$existing = get_post_meta( $post_id, (string) $field['name'], true );
-		return '' !== (string) $existing ? $existing : $value;
+		$terms = wp_get_post_terms( $post_id, (string) $field['taxonomy'], array( 'fields' => 'ids' ) );
+		if ( ! is_wp_error( $terms ) && 1 === count( $terms ) ) {
+			return (int) $terms[0];
+		}
+		return get_post_meta( $post_id, (string) $field['name'], true );
 	}
 
 	public static function protect_registry_number( mixed $value, int|string $post_id, array $field ): string {
@@ -420,3 +486,4 @@ final class CRMM_Trim_Fields {
 		return hash( 'sha256', wp_json_encode( $values ) );
 	}
 }
+
