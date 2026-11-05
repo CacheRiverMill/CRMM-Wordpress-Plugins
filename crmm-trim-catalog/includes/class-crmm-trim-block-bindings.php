@@ -72,6 +72,35 @@ final class CRMM_Trim_Block_Bindings {
 		add_action( 'init', array( __CLASS__, 'register_source' ), 30 );
 		add_action( 'init', array( __CLASS__, 'register_public_meta' ), 30 );
 		add_action( 'enqueue_block_editor_assets', array( __CLASS__, 'enqueue_editor_assets' ) );
+		add_filter( 'update_post_metadata', array( __CLASS__, 'preserve_unchanged_attachment_meta' ), 20, 5 );
+	}
+
+	/**
+	 * REST treats a zero-row update of duplicate single-value meta as a DB error.
+	 * Acknowledge an unchanged attachment only when every stored row agrees.
+	 * Leave real changes, conflicting rows and other filters to the normal save.
+	 */
+	public static function preserve_unchanged_attachment_meta( mixed $check, int $post_id, string $meta_key, mixed $value, mixed $previous ): mixed {
+		if ( null !== $check || ! defined( 'REST_REQUEST' ) || ! REST_REQUEST || '' !== $previous ) {
+			return $check;
+		}
+		$field = self::FIELDS[ $meta_key ] ?? null;
+		if ( ! $field || 'attachment_url' !== ( $field['format'] ?? '' ) || ( ! is_string( $value ) && ! is_int( $value ) ) ) {
+			return $check;
+		}
+		if ( CRMM_Trim_Post_Type::POST_TYPE !== get_post_type( $post_id ) || ! current_user_can( 'edit_post_meta', $post_id, $meta_key ) ) {
+			return $check;
+		}
+		$stored = get_post_meta( $post_id, $meta_key, false );
+		if ( ! is_array( $stored ) || count( $stored ) < 2 ) {
+			return $check;
+		}
+		foreach ( $stored as $row ) {
+			if ( ! is_string( $row ) || $row !== (string) $value ) {
+				return $check;
+			}
+		}
+		return true;
 	}
 
 	public static function register_source(): void {
@@ -172,3 +201,4 @@ final class CRMM_Trim_Block_Bindings {
 		return $fields;
 	}
 }
+
