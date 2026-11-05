@@ -140,6 +140,15 @@ final class CRMM_Trim_Admin {
 		if ( ! current_user_can( CRMM_Trim_Capabilities::ASSIGN_NUMBERS ) || ( $post_id && ! current_user_can( 'edit_post', $post_id ) ) ) {
 			wp_send_json_error( array( 'message' => __( 'You are not allowed to preview part numbers.', 'crmm-trim-catalog' ) ), 403 );
 		}
+		if ( $post_id && CRMM_Trim_Post_Type::POST_TYPE !== get_post_type( $post_id ) ) {
+			wp_send_json_error( array( 'message' => __( 'Part numbers are only available for trim profiles.', 'crmm-trim-catalog' ) ), 400 );
+		}
+
+		// An existing assignment always wins, even if the requested classification is stale.
+		$assigned_number = $post_id ? CRMM_Trim_Number_Registry::for_post( $post_id ) : '';
+		if ( '' !== $assigned_number ) {
+			wp_send_json_success( array( 'part_number' => $assigned_number, 'assigned' => true ) );
+		}
 
 		$category = CRMM_Trim_Taxonomies::category_term_by_code( sanitize_text_field( wp_unslash( $_POST['category_code'] ?? '' ) ) );
 		$subtype  = CRMM_Trim_Taxonomies::subtype_term_by_code( sanitize_text_field( wp_unslash( $_POST['subtype_code'] ?? '' ) ) );
@@ -151,7 +160,7 @@ final class CRMM_Trim_Admin {
 			(string) get_term_meta( $category->term_id, 'crmm_category_code', true ),
 			(string) get_term_meta( $subtype->term_id, 'crmm_subtype_code', true )
 		);
-		wp_send_json_success( array( 'part_number' => $number ) );
+		wp_send_json_success( array( 'part_number' => $number, 'assigned' => false ) );
 	}
 
 	public static function enqueue_editor_assets( string $hook ): void {
@@ -185,6 +194,8 @@ final class CRMM_Trim_Admin {
 				'ajaxUrl'       => admin_url( 'admin-ajax.php' ),
 				'nonce'         => wp_create_nonce( 'crmm_preview_trim_number' ),
 				'postId'        => get_the_ID(),
+				'assignedNumber' => CRMM_Trim_Number_Registry::for_post( (int) get_the_ID() ),
+				'assignedLabel' => __( 'Permanent part number:', 'crmm-trim-catalog' ),
 				'categoryCodes' => $category_codes,
 				'subtypes'      => $subtypes,
 				'previewLabel'  => __( 'Expected next number (not reserved):', 'crmm-trim-catalog' ),
@@ -205,3 +216,4 @@ final class CRMM_Trim_Admin {
 		exit;
 	}
 }
+

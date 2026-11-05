@@ -89,6 +89,27 @@ If WordPress mail delivery fails, the permanent number remains assigned and the 
 
 Category and profile type are locked after permanent number assignment. Server-side term enforcement restores the registry-backed classification if a REST or programmatic update attempts to change it. Selecting both fields displays an unreserved expected-number preview in the editor; the first valid save reserves the authoritative number through the locked registry transaction.
 
+Existing numbered profiles always display their permanent registry-backed number. Next-number previews are only for unnumbered profiles and never populate the Part Number or title. The preview endpoint returns an existing assignment before considering requested classification. Older requests are cancelled and their callbacks ignored when a selection changes or an assignment becomes available.
+
+Locked classification controls remain disabled. Before ACF validates the submitted values, the plugin checks the saved taxonomy terms against the permanent number, then supplies those authoritative IDs for omitted/empty controls. Nonempty attempts to change them are rejected. Required and category/type compatibility checks remain active for unnumbered profiles, including omitted fields. Existing update and taxonomy integrity protections remain in place.
+
+### Regression tests and staging checks
+
+Run `php tests/profile-identity.php` and `node --test tests/admin-classification.test.cjs` from the repository root. These dependency-free unit suites exercise production PHP/JavaScript with WordPress/ACF/MySQL and jQuery/editor test doubles. CI runs the PHP tests on PHP 8.1–8.4 and JavaScript tests on Node 22.
+
+Before deployment, verify on a disposable WordPress/ACF staging site with both the block and classic editors:
+
+- Open an existing numbered profile: editor title, Part Number, and registry panel agree; no next-number request is made. Save an unrelated edit and reload; number, slug, and classification remain unchanged.
+- Save valid locked classifications, including disabled controls with empty hidden inputs. Invalid saved terms and tampered requests must report errors without reclassifying the profile.
+- For an unnumbered profile, missing or incompatible classifications fail validation. A valid selection shows an unreserved preview, and its first valid save assigns one permanent number. Subsequent saves preserve it.
+- Rapidly change selections and save while a preview is pending; old responses cannot change the latest preview or permanent number.
+
+### External drawing-review identity contract
+
+This repository stores verification fields and audit events; it does not contain the drawing-review automation. That external process must identify each record by **WordPress post ID plus permanent registry number**, not by an editor title, next-number preview, slug, or list position. Before comparison and immediately before writing results, re-read the assignment and require the source drawing identity to match. Stop and flag mismatches or changed assignments for review; never carry a result to a different profile.
+
+For the reported case, post 309's permanent identity is `4-CR-1009`, with the review referencing `4-CR-1009.pdf`. An erroneous `4-CR-1015` preview is not grounds for changing registry assignments, slugs, review notes, or verification decisions. This fix includes no live-data migration or review-record changes.
+
 The expected number is displayed as the post title while editing. After allocation, the committed permanent number becomes the authoritative post title, and later title changes are automatically restored to that number.
 
 ## Current limitations
@@ -96,3 +117,4 @@ The expected number is displayed as the post title while editing. After allocati
 - The legacy GitHub repository contains only a Laravel scaffold. No catalog model, controller, migration, or historical numbering implementation was committed, so the numbering behavior is reconstructed from the exported database and confirmed business rules.
 - Public catalog templates and filtering UI belong to the theme/site implementation and are not included in this data plugin.
 - Readiness queues use indexed post-meta conditions for efficient filtering; the readiness badge remains the authoritative per-record calculation.
+
