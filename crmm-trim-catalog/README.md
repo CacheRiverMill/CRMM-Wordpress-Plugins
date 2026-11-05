@@ -79,6 +79,10 @@ Admin search includes titles, current and legacy part numbers, category, profile
 
 Publishing is blocked when a profile does not have a valid registry-backed number and matching classification, marketing approval, verification, catalog dimensions, and a primary profile image.
 
+The editor's **Publishing requirements** panel shows all five saved requirements, with the exact saved verification status and an action for each unmet requirement. The profile list also displays the reasons beneath its readiness badge; no hovering is needed. Optional files and knife availability are explicitly identified as nonblocking.
+
+Correct the indicated fields and **Save draft**, then **Publish**. Requirements use saved values; changing a dropdown alone does not update the publishing decision. The panel marks unsaved field edits and refreshes after a successful block-editor save, including the metabox save phase. **Refresh saved checks** is available if needed. A blocked block-editor publish request returns the actual reasons as a visible error instead of silently reverting to draft. These interface changes do not alter approval/verification criteria or any live review records.
+
 ## Part-number notifications
 
 Open **Trim Profiles → Settings** to configure notification recipients and the subject prefix. Notifications are emitted only after a new WordPress-assigned number has committed successfully. Repeated assignment requests and legacy imports do not send them.

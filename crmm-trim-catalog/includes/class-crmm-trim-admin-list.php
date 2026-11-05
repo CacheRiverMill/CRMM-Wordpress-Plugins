@@ -77,6 +77,13 @@ final class CRMM_Trim_Admin_List {
 				$readiness = CRMM_Trim_Readiness::evaluate( $post_id );
 				$details = array_merge( $readiness['blockers'], $readiness['warnings'] );
 				printf( '<span class="crmm-badge %1$s" title="%2$s">%3$s</span>', $readiness['ready'] ? 'is-ready' : 'is-blocked', esc_attr( implode( ' ', $details ) ), esc_html( $readiness['ready'] ? __( 'Ready', 'crmm-trim-catalog' ) : sprintf( __( '%d blockers', 'crmm-trim-catalog' ), count( $readiness['blockers'] ) ) ) );
+				if ( $readiness['blockers'] ) {
+					echo '<ul class="crmm-list-blockers">';
+					foreach ( $readiness['blockers'] as $blocker ) {
+						echo '<li>' . esc_html( $blocker ) . '</li>';
+					}
+					echo '</ul>';
+				}
 				break;
 			case 'crmm_modified':
 				echo esc_html( get_the_modified_date( '', $post_id ) );
@@ -266,3 +273,4 @@ final class CRMM_Trim_Admin_List {
 		return $value ? ucwords( str_replace( '_', ' ', $value ) ) : __( 'Unknown', 'crmm-trim-catalog' );
 	}
 }
+
